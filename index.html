@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GoldFlow Pro | Standalone</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+  <!-- Libraries for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<title>GoldFlow Secure Login</title>
+
+<style>
+
+:root {
+      --bg-slate: #f8fafc;
+      --indigo-950: #1e1b4b;
+      --indigo-900: #312e81;
+      --indigo-600: #4f46e5;
+      --amber-400: #fbbf24;
+      --amber-500: #f59e0b;
+      --amber-600: #d97706;
+      --white: #ffffff;
+      --shadow-sm: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      --glass: rgba(255, 255, 255, 0.85);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0; padding: 0;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #0f172a;
+      color: #1e293b;
+      display: flex; justify-content: center; min-height: 100vh;
+    }
+
+    #app-container {
+      width: 100%; max-width: 500px;
+      background: var(--bg-slate);
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      position: relative;
+      box-shadow: 0 0 100px rgba(0,0,0,0.5);
+    }
+
+    header {
+      padding: 1rem 1.5rem;
+      background: var(--glass);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid #e2e8f0;
+      display: flex; justify-content: space-between; align-items: center;
+      position: sticky; top: 0; z-index: 50;
+    }
+
+    .logo-box { display: flex; align-items: center; gap: 0.75rem; }
+    .logo-icon {
+      width: 40px; height: 40px;
+      background: var(--indigo-950); border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--amber-400); font-weight: 900; font-size: 1.25rem; font-style: italic;
+    }
+    .logo-text h1 { margin: 0; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.2em; color: var(--indigo-950); }
+    .logo-text span { font-size: 8px; font-weight: 800; color: var(--amber-600); text-transform: uppercase; letter-spacing: 0.2em; }
+
+    main { flex: 1; padding: 1.25rem; padding-bottom: 6rem; overflow-y: auto; }
+
+    .card {
+      background: var(--white); border-radius: 2rem; padding: 1.5rem;
+      margin-bottom: 1.5rem; border: 1px solid #f1f5f9; box-shadow: var(--shadow-sm);
+    }
+
+    .input-group { margin-bottom: 1rem; }
+    label { display: block; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: var(--indigo-600); margin-bottom: 0.4rem; padding-left: 0.5rem; }
+    input, select {
+      width: 100%; padding: 1rem; border-radius: 1rem; border: 1px solid #e2e8f0;
+      background: #f8fafc; font-size: 0.875rem; font-weight: 600; color: var(--indigo-950); outline: none;
+    }
+    input:focus, select:focus { border-color: var(--amber-400); background: var(--white); }
+
+    button {
+      width: 100%; padding: 1rem; border: none; border-radius: 1.25rem;
+      font-weight: 800; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    }
+    button.primary { background: var(--indigo-950); color: var(--white); }
+    button.gold { background: var(--amber-500); color: var(--indigo-950); }
+    button.outline { background: transparent; border: 1px solid #e2e8f0; color: var(--indigo-950); }
+
+    nav {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: var(--glass); backdrop-filter: blur(20px); border-top: 1px solid #e2e8f0;
+      display: flex; justify-content: space-around; padding: 0.75rem; z-index: 50;
+    }
+    .nav-item {
+      display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+      color: #94a3b8; text-decoration: none; font-size: 8px; font-weight: 800; text-transform: uppercase; cursor: pointer;
+    }
+    .nav-item.active { color: var(--indigo-950); }
+
+    .item-entry {
+      background: var(--white); border-radius: 1.5rem; padding: 1.25rem;
+      margin-bottom: 1rem; position: relative; border-bottom: 4px solid #f1f5f9;
+    }
+    .item-entry .remove { position: absolute; top: 1rem; right: 1rem; color: #cbd5e1; cursor: pointer; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; }
+
+    .summary-section {
+      text-align: center; margin-top: 1.5rem;
+      background: var(--indigo-950); color: white; padding: 2rem 1.5rem; border-radius: 2.5rem;
+    }
+    .balance-val { font-size: 2.5rem; font-weight: 900; letter-spacing: -0.05em; margin-bottom: 1rem; }
+    
+    .scroll-list { max-height: 40vh; overflow-y: auto; }
+body{
+  margin:0;
+  font-family:Arial,Helvetica,sans-serif;
+  background:#0f172a;
+}
+.hidden{display:none;}
+
+#loginScreen{
+  position:fixed;
+  inset:0;
+  background:#0f172a;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.box{
+  background:#fff;
+  padding:20px;
+  border-radius:12px;
+  width:300px;
+}
+
+input,button{
+  width:100%;
+  padding:10px;
+  margin-top:8px;
+}
+
+button{
+  background:#1e1b4b;
+  color:white;
+  border:none;
+  border-radius:8px;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+#app{
+  display:none;
+  max-width:800px;
+  margin:auto;
+  padding:1rem;
+  background:#f8fafc;
+  min-height:100vh;
+}
+
+.card{
+  background:white;
+  padding:1rem;
+  border-radius:12px;
+  margin-bottom:1rem;
+}
+
+.userRow{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  margin-bottom:6px;
+}
+
+.userRow input{
+  flex:1;
+}
+
+.deleteBtn{
+  background:#dc2626;
+}
+
+.logoutBtn{
+  background:#7c2d12;
+  margin-bottom:1rem;
+}
+small{color:red;}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "@capacitor/cli": "https://esm.sh/@capacitor/cli@^8.0.0",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="box">
+    <h3>🔐 GoldFlow Login</h3>
+    <input id="loginUser" placeholder="Username">
+    <input id="loginPass" type="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+    <small id="errorMsg"></small>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <button class="logoutBtn" onclick="logout()">Logout</button>
+
+  <div class="card">
+    <h3>Welcome <span id="currentUser"></span></h3>
+    <div id="app-container">
+    <header>
+      <div class="logo-box">
+        <div class="logo-icon">G</div>
+        <div class="logo-text">
+          <h1>GoldFlow</h1>
+          <span>Standalone App</span>
+        </div>
+      </div>
+      <div id="view-indicator" style="background: var(--indigo-950); color: white; padding: 4px 12px; border-radius: 20px; font-size: 8px; font-weight: 900;">LEDGER</div>
+    </header>
+
+    <main id="main-content">
+      <!-- Content injected by JS -->
+    </main>
+
+    <nav>
+      <div class="nav-item active" onclick="switchView('ledger')">
+        <span style="font-size: 1.25rem;">📊</span>
+        <span>Ledger</span>
+      </div>
+      <div class="nav-item" onclick="switchView('admin')">
+        <span style="font-size: 1.25rem;">🔑</span>
+        <span>Master</span>
+      </div>
+    </nav>
+  </div>
+<script>
+    // --- APP STATE ---
+    const PASSPHRASE = 'GOLD786';
+    const DB_NAME = 'GoldFlowDB_Local';
+    const STORES = { CUSTOMERS: 'customers', VOUCHERS: 'vouchers' };
+    
+    let state = {
+      view: 'ledger',
+      customers: [],
+      vouchers: [],
+      isAdminAuth: false,
+      currentVoucher: {
+        customerId: '',
+        date: new Date().toISOString().split('T')[0],
+        items: [],
+        mpGross: 0,
+        mpTunch: 100
+      }
+    };
+
+    // --- DB HELPERS ---
+    function initDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORES.CUSTOMERS)) db.createObjectStore(STORES.CUSTOMERS, { keyPath: 'id' });
+          if (!db.objectStoreNames.contains(STORES.VOUCHERS)) db.createObjectStore(STORES.VOUCHERS, { keyPath: 'id' });
+        };
+        request.onsuccess = (e) => resolve(e.target.result);
+        request.onerror = (e) => reject(e.target.error);
+      });
+    }
+
+    async function getData(storeName) {
+      const db = await initDB();
+      return new Promise(resolve => {
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        store.getAll().onsuccess = (e) => resolve(e.target.result);
+      });
+    }
+
+    async function saveData(storeName, data) {
+      const db = await initDB();
+      const tx = db.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).put(data);
+      return new Promise(resolve => tx.oncomplete = resolve);
+    }
+
+    // --- LOGIC ---
+    function calculateTotals() {
+      const fine = state.currentVoucher.items.reduce((acc, i) => acc + i.finalWeight, 0);
+      const gross = state.currentVoucher.items.reduce((acc, i) => acc + i.grossWeight, 0);
+      const net = state.currentVoucher.items.reduce((acc, i) => acc + (i.grossWeight - i.lessWeight), 0);
+      
+      const activeCust = state.customers.find(c => c.id === state.currentVoucher.customerId);
+      const opening = activeCust ? activeCust.currentStock : 0;
+      
+      const mpWeight = Number(state.currentVoucher.mpGross) || 0;
+      const mpTunch = Number(state.currentVoucher.mpTunch) || 100;
+      const mpFine = mpWeight * (mpTunch / 100);
+      
+      return { fine, gross, net, opening, mpFine, closing: opening + fine - mpFine };
+    }
+
+    function switchView(v) {
+      state.view = v;
+      render();
+    }
+
+    // --- RENDERING ---
+    function render() {
+      const main = document.getElementById('main-content');
+      const indicator = document.getElementById('view-indicator');
+      const navItems = document.querySelectorAll('.nav-item');
+      
+      indicator.textContent = state.view.toUpperCase();
+      navItems[0].className = state.view === 'ledger' ? 'nav-item active' : 'nav-item';
+      navItems[1].className = state.view === 'admin' ? 'nav-item active' : 'nav-item';
+
+      if (state.view === 'ledger') renderLedger(main);
+      else renderAdmin(main);
+    }
+
+    function renderLedger(container) {
+      const totals = calculateTotals();
+      const activeCust = state.customers.find(c => c.id === state.currentVoucher.customerId);
+
+      container.innerHTML = `
+        <div class="card">
+          <label>Select Client Profile</label>
+          <select onchange="state.currentVoucher.customerId = this.value; render();">
+            <option value="">-- Choose Account --</option>
+            ${state.customers.map(c => `<option value="${c.id}" ${c.id === state.currentVoucher.customerId ? 'selected' : ''}>${c.name}</option>`).join('')}
+          </select>
+          <div class="grid-2" style="margin-top:1rem">
+            <div class="input-group">
+              <label>Date</label>
+              <input type="date" value="${state.currentVoucher.date}" onchange="state.currentVoucher.date = this.value">
+            </div>
+            <div class="input-group">
+              <label>Opening Stock</label>
+              <div style="background:var(--amber-50); padding:1rem; border-radius:1rem; text-align:center; font-weight:900; color:var(--amber-600)">
+                ${activeCust ? activeCust.currentStock.toFixed(3) : '0.000'} g
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+          <span style="font-size:10px; font-weight:900; color:var(--indigo-600)">ITEMS REGISTRY</span>
+          <button class="primary" onclick="addItem()" style="width:auto; padding:0.5rem 1rem">+ ADD ITEM</button>
+        </div>
+
+        <div id="items-list">
+          ${state.currentVoucher.items.map((item, idx) => `
+            <div class="item-entry" data-id="${item.id}">
+              <div class="remove" onclick="removeItem('${item.id}')">✕</div>
+              <div class="grid-2">
+                <div class="input-group"><label>Item Description</label><input type="text" value="${item.description}" oninput="updateItemField('${item.id}', 'description', this.value)"></div>
+                <div class="input-group"><label>Stamp</label><input type="text" value="${item.stamp}" oninput="updateItemField('${item.id}', 'stamp', this.value)"></div>
+              </div>
+              <div class="grid-2">
+                <div class="input-group"><label>Gross Weight</label><input type="number" step="0.001" value="${item.grossWeight || ''}" oninput="updateItemField('${item.id}', 'grossWeight', this.value)"></div>
+                <div class="input-group"><label>Less Weight</label><input type="number" step="0.001" value="${item.lessWeight || ''}" oninput="updateItemField('${item.id}', 'lessWeight', this.value)"></div>
+              </div>
+              <div class="grid-3">
+                <div class="input-group"><label>Tunch %</label><input type="number" step="0.01" value="${item.tunch}" oninput="updateItemField('${item.id}', 'tunch', this.value)"></div>
+                <div class="input-group"><label>Wastage %</label><input type="number" step="0.01" value="${item.wastage}" oninput="updateItemField('${item.id}', 'wastage', this.value)"></div>
+                <div class="input-group"><label>Pcs</label><input type="number" value="${item.pcs}" oninput="updateItemField('${item.id}', 'pcs', this.value)"></div>
+              </div>
+              <div style="background:var(--indigo-950); color:white; padding:0.75rem; border-radius:1rem; display:flex; justify-content:space-between; font-size:11px; font-weight:900">
+                <span style="opacity:0.6">FINE WEIGHT</span>
+                <span class="fine-label">${item.finalWeight.toFixed(3)} g</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="card" style="border: 1px solid var(--indigo-100); background: #fdfdfd;">
+          <div style="font-size:10px; font-weight:900; color:var(--indigo-600); margin-bottom:1rem; text-transform:uppercase; letter-spacing:0.1em">MP Deduction Section</div>
+          <div class="grid-2">
+            <div class="input-group">
+              <label>Weight (g)</label>
+              <input type="number" step="0.001" value="${state.currentVoucher.mpGross || ''}" oninput="updateMpDeduction('mpGross', this.value)">
+            </div>
+            <div class="input-group">
+              <label>Tunch %</label>
+              <input type="number" step="0.01" value="${state.currentVoucher.mpTunch}" oninput="updateMpDeduction('mpTunch', this.value)">
+            </div>
+          </div>
+          <div style="font-size:11px; font-weight:800; color:var(--indigo-950); text-align:right; margin-top:0.5rem">
+            Deduction Fine: <span class="mp-fine-label" style="color:red">-${totals.mpFine.toFixed(3)} g</span>
+          </div>
+        </div>
+
+        <div class="summary-section">
+          <div style="font-size:9px; color:var(--amber-400); font-weight:800; margin-bottom:0.5rem; letter-spacing:0.2em">ESTIMATED CLOSING BALANCE</div>
+          <div class="balance-val">${totals.closing.toFixed(3)} g</div>
+          <button class="gold" onclick="saveAndPrint()" style="height:4rem; font-size:12px">SAVE & GENERATE PDF</button>
+        </div>
+      `;
+    }
+
+    function renderAdmin(container) {
+      if (!state.isAdminAuth) {
+        container.innerHTML = `
+          <div class="card" style="text-align:center; padding:3rem 1rem">
+            <div style="font-size:3rem; margin-bottom:1rem">🔒</div>
+            <label>Master Passphrase</label>
+            <input type="password" id="admin-p" style="text-align:center; font-size:1.5rem">
+            <button class="primary" style="margin-top:1rem" onclick="authAdmin()">Unlock Vault</button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; margin-bottom:1rem">
+            <span style="font-weight:900; font-size:10px">ACCOUNTS MANAGEMENT</span>
+            <span style="color:red; font-weight:900; font-size:10px; cursor:pointer" onclick="state.isAdminAuth=false; render()">LOCK</span>
+          </div>
+          <div class="grid-2" style="margin-bottom:1.5rem">
+            <input type="text" id="new-c-name" placeholder="Client Name">
+            <button class="primary" onclick="addClient()">ADD</button>
+          </div>
+          <div class="scroll-list">
+            ${state.customers.map(c => `
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:1rem; background:#f8fafc; border-radius:1rem; margin-bottom:0.5rem; border: 1px solid #f1f5f9;">
+                <span style="font-weight:800; font-size:13px">${c.name}</span>
+                <div style="display:flex; align-items:center; gap:5px">
+                  <input type="number" step="0.001" value="${c.currentStock}" onchange="updateStock('${c.id}', this.value)" style="width:100px; padding:8px; text-align:right; font-weight:900; font-size:12px; border:1px solid #e2e8f0; border-radius:10px">
+                  <span style="font-size:9px; font-weight:900; color:#94a3b8">g</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // --- ACTIONS ---
+    function authAdmin() {
+      if (document.getElementById('admin-p').value === PASSPHRASE) {
+        state.isAdminAuth = true;
+        render();
+      } else alert('Wrong Passphrase');
+    }
+
+    async function addClient() {
+      const nameInput = document.getElementById('new-c-name');
+      const name = nameInput.value.trim();
+      if (!name) return;
+      const c = { id: Date.now().toString(), name, currentStock: 0 };
+      state.customers.push(c);
+      await saveData(STORES.CUSTOMERS, c);
+      nameInput.value = '';
+      render();
+    }
+
+    async function updateStock(id, val) {
+      const c = state.customers.find(x => x.id === id);
+      c.currentStock = Number(val);
+      await saveData(STORES.CUSTOMERS, c);
+    }
+
+    function addItem() {
+      state.currentVoucher.items.push({ id: Math.random().toString(36).substr(2,9), description: '', stamp: '', grossWeight: 0, lessWeight: 0, tunch: 92, wastage: 0, pcs: 1, finalWeight: 0 });
+      render();
+    }
+
+    function removeItem(id) {
+      state.currentVoucher.items = state.currentVoucher.items.filter(i => i.id !== id);
+      render();
+    }
+
+    // --- SURGICAL UPDATES (Fixes focus loss) ---
+    function updateItemField(id, field, val) {
+      const i = state.currentVoucher.items.find(x => x.id === id);
+      i[field] = (field === 'description' || field === 'stamp') ? val : Number(val);
+      i.finalWeight = (i.grossWeight - i.lessWeight) * ((i.tunch + i.wastage) / 100);
+      
+      const entry = document.querySelector(`.item-entry[data-id="${id}"]`);
+      if (entry) {
+        entry.querySelector('.fine-label').textContent = i.finalWeight.toFixed(3) + ' g';
+      }
+      
+      updateGlobalSummary();
+    }
+
+    function updateMpDeduction(field, val) {
+      state.currentVoucher[field] = Number(val);
+      const totals = calculateTotals();
+      const mpLabel = document.querySelector('.mp-fine-label');
+      if (mpLabel) mpLabel.textContent = `-${totals.mpFine.toFixed(3)} g`;
+      updateGlobalSummary();
+    }
+
+    function updateGlobalSummary() {
+      const totals = calculateTotals();
+      const balVal = document.querySelector('.balance-val');
+      if (balVal) balVal.textContent = totals.closing.toFixed(3) + ' g';
+    }
+
+    async function saveAndPrint() {
+      if (!state.currentVoucher.customerId) return alert('Select Client Profile');
+      if (state.currentVoucher.items.length === 0) return alert('Add items to registry');
+      
+      const totals = calculateTotals();
+      const c = state.customers.find(x => x.id === state.currentVoucher.customerId);
+      
+      // Store current stock for later reference in PDF as "Opening"
+      const openingAtTime = c.currentStock;
+      
+      const v = { 
+        ...state.currentVoucher, 
+        id: Date.now().toString(), 
+        customerName: c.name, 
+        openingBalance: openingAtTime,
+        closingBalance: totals.closing,
+        mpFine: totals.mpFine
+      };
+      
+      c.currentStock = totals.closing;
+      
+      await saveData(STORES.VOUCHERS, v);
+      await saveData(STORES.CUSTOMERS, c);
+      
+      printPDF(openingAtTime);
+      
+      state.currentVoucher = { 
+        customerId: '', 
+        date: new Date().toISOString().split('T')[0], 
+        items: [], 
+        mpGross: 0, 
+        mpTunch: 100 
+      };
+      
+      alert('Voucher Saved & Downloaded');
+      render();
+    }
+
+    function printPDF(providedOpening) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const totals = calculateTotals();
+      const c = state.customers.find(x => x.id === state.currentVoucher.customerId);
+      
+      // If providedOpening is undefined (preview mode), use current state
+      const opening = providedOpening !== undefined ? providedOpening : totals.opening;
+      const closing = opening + totals.fine - totals.mpFine;
+
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("GOLD RECEIPT STATEMENT", 105, 15, { align: 'center' });
+      
+      doc.setFontSize(11);
+      doc.text("Account: " + c.name.toUpperCase(), 15, 25);
+      doc.setFont("helvetica", "normal");
+      doc.text("Date: " + state.currentVoucher.date, 195, 25, { align: 'right' });
+
+      // Build main item rows
+      const rows = state.currentVoucher.items.map((i, idx) => [
+        idx + 1, 
+        i.description, 
+        i.stamp, 
+        i.grossWeight.toFixed(3), 
+        i.lessWeight.toFixed(3), 
+        (i.grossWeight - i.lessWeight).toFixed(3), 
+        i.tunch.toFixed(2), 
+        i.wastage.toFixed(2), 
+        i.pcs, 
+        i.finalWeight.toFixed(3)
+      ]);
+
+      // 1. ADD TOTAL ROW
+      rows.push([
+        { content: 'TOTAL', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: totals.gross.toFixed(3), styles: { fontStyle: 'bold' } },
+        '',
+        { content: totals.net.toFixed(3), styles: { fontStyle: 'bold' } },
+        '', '', '',
+        { content: totals.fine.toFixed(3), styles: { fontStyle: 'bold' } }
+      ]);
+
+      // 2. ADD MP DEDUCTION ROW
+      // indices: 0:item, 1:stamp, 2:gross, 3:less, 4:net, 5:tunch, 6:wastage, 7:pcs, 8:fine
+      // User requested: value in gross weight column, Tunch % in Tunch column and final value in Fine column.
+      rows.push([
+        { content: 'MP DEDUCTION FINE', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: (state.currentVoucher.mpGross || 0).toFixed(3), styles: { fontStyle: 'bold' } }, // Index 3 (Gross)
+        '', // Index 4 (Less)
+        '', // Index 5 (Net Wt)
+        { content: state.currentVoucher.mpTunch.toFixed(2) + '%', styles: { fontStyle: 'bold' } }, // Index 6 (Tunch)
+        '', // Index 7 (Wastage)
+        '', // Index 8 (Pcs)
+        { content: `(-) ${totals.mpFine.toFixed(3)}`, styles: { fontStyle: 'bold', textColor: [200, 0, 0] } } // Index 9 (Fine)
+      ]);
+
+      // 3. ADD OPENING STOCK ROW
+      rows.push([
+        { content: 'OPENING STOCK BALANCE', colSpan: 9, styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: opening.toFixed(3), styles: { fontStyle: 'bold' } }
+      ]);
+
+      // 4. ADD CLOSING BALANCE ROW
+      rows.push([
+        { content: 'NET CLOSING BALANCE', colSpan: 9, styles: { fontStyle: 'bold', halign: 'right', fillColor: [245, 245, 245] } },
+        { content: closing.toFixed(3), styles: { fontStyle: 'bold', fillColor: [230, 230, 230] } }
+      ]);
+
+      doc.autoTable({
+        startY: 32,
+        head: [['#', 'Description', 'Stamp', 'Gross', 'Less', 'Net Wt', 'Tunch', 'Wstg', 'Pcs', 'Fine']],
+        body: rows,
+        theme: 'grid',
+        styles: { 
+          textColor: 20, 
+          lineColor: 0, 
+          lineWidth: 0.1, 
+          fontSize: 8,
+          cellPadding: 3
+        },
+        headStyles: { 
+          fillColor: 255, 
+          textColor: 0, 
+          fontStyle: 'bold', 
+          lineWidth: 0.2
+        },
+        alternateRowStyles: {
+          fillColor: 255
+        }
+      });
+
+      doc.save(`Receipt_${c.name.replace(/\s+/g, '_')}_${state.currentVoucher.date}.pdf`);
+    }
+
+    // --- INIT ---
+    async function start() {
+      state.customers = await getData(STORES.CUSTOMERS);
+      if (state.customers.length === 0) {
+        state.customers = [{id:'1', name:'Demo Account', currentStock:0}];
+        await saveData(STORES.CUSTOMERS, state.customers[0]);
+      }
+      render();
+    }
+    start();
+  </script>
+  
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div id="adminPanel" class="card hidden">
+    <h3>🔑 Admin – User Management</h3>
+
+    <input id="newUser" placeholder="Username">
+    <input id="newPass" placeholder="Password">
+    <label>Expiry Date</label>
+    <input id="newExpiry" type="date">
+    <button onclick="addUser()">Add User</button>
+
+    <hr>
+    <div id="userList"></div>
+  </div>
+</div>
+
+<script>
+/* ===== USER DB ===== */
+let users = JSON.parse(localStorage.getItem('gf_users'));
+
+if(!users){
+  users = [
+    { username:'admin', password:'admin123', role:'admin' },
+    { username:'user1', password:'user123', role:'user', expiry:'2099-12-31' }
+  ];
+  localStorage.setItem('gf_users', JSON.stringify(users));
+}
+
+function saveUsers(){
+  localStorage.setItem('gf_users', JSON.stringify(users));
+}
+
+/* ===== LOGIN ===== */
+function login(){
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value.trim();
+  const err = document.getElementById('errorMsg');
+
+  const user = users.find(x=>x.username===u && x.password===p);
+
+  if(!user){
+    err.textContent = 'Invalid credentials';
+    return;
+  }
+
+  if(user.role==='user'){
+    const today = new Date().toISOString().split('T')[0];
+    if(today > user.expiry){
+      err.textContent = 'Account expired. Contact admin.';
+      return;
+    }
+  }
+
+  localStorage.setItem('gf_session', JSON.stringify(user));
+  showApp(user);
+}
+
+function showApp(user){
+  document.getElementById('loginScreen').style.display='none';
+  
+  document.getElementById('app').style.display='block';
+  document.getElementById('currentUser').textContent = user.username;
+
+  if(user.role==='admin'){
+    document.getElementById('adminPanel').classList.remove('hidden');
+	document.getElementById('app-container').style.display='none';
+    renderUsers();
+  }
+}
+
+/* ===== ADMIN ===== */
+function addUser(){
+  const u = newUser.value.trim();
+  const p = newPass.value.trim();
+  const e = newExpiry.value;
+
+  if(!u || !p || !e) return alert('Fill all fields');
+  if(users.find(x=>x.username===u)) return alert('User exists');
+
+  users.push({ username:u, password:p, role:'user', expiry:e });
+  saveUsers();
+
+  newUser.value='';
+  newPass.value='';
+  newExpiry.value='';
+  renderUsers();
+}
+
+function renderUsers(){
+  const list = document.getElementById('userList');
+  list.innerHTML='';
+
+  users.filter(u=>u.role==='user').forEach(u=>{
+    const row = document.createElement('div');
+    row.className='userRow';
+    row.innerHTML=`
+      <strong>${u.username}</strong>
+      <input type="date" value="${u.expiry}">
+      <button class="deleteBtn">X</button>
+    `;
+
+    row.querySelector('input').onchange = e=>{
+      u.expiry = e.target.value;
+      saveUsers();
+    };
+
+    row.querySelector('button').onclick = ()=>{
+      if(confirm('Delete user?')){
+        users = users.filter(x=>x.username!==u.username);
+        saveUsers();
+        renderUsers();
+      }
+    };
+
+    list.appendChild(row);
+  });
+}
+
+/* ===== LOGOUT ===== */
+function logout(){
+  localStorage.removeItem('gf_session');
+  location.reload();
+}
+
+/* ===== AUTO LOGIN ===== */
+const session = JSON.parse(localStorage.getItem('gf_session'));
+if(session){
+  showApp(session);
+}
+</script>
+
+</body>
+</html>
