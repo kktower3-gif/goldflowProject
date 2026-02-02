@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+      const SUPABASE_URL = "https://agfxauhgiqasrzpiltjp.supabase.co";
+      const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnZnhhdWhnaXFhc3J6cGlsdGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3NDA3NTYsImV4cCI6MjA4NTMxNjc1Nn0.jLn3GNtD_Ws7m9iq1qPV6gevG810U15foTIKOwse36s";
+      window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    </script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -270,34 +277,32 @@ small{color:red;}
       }
     };
 
-    // --- DB HELPERS ---
-    function initDB() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains(STORES.CUSTOMERS)) db.createObjectStore(STORES.CUSTOMERS, { keyPath: 'id' });
-          if (!db.objectStoreNames.contains(STORES.VOUCHERS)) db.createObjectStore(STORES.VOUCHERS, { keyPath: 'id' });
-        };
-        request.onsuccess = (e) => resolve(e.target.result);
-        request.onerror = (e) => reject(e.target.error);
-      });
+    // --- DB HELPERS (Supabase) ---
+    async function fetchCustomers() {
+      const { data, error } = await window.sb.from('customers').select('*').order('created_at', { ascending: true });
+      if (error) { console.error('fetchCustomers', error); return null; }
+      return data || [];
     }
 
-    async function getData(storeName) {
-      const db = await initDB();
-      return new Promise(resolve => {
-        const tx = db.transaction(storeName, 'readonly');
-        const store = tx.objectStore(storeName);
-        store.getAll().onsuccess = (e) => resolve(e.target.result);
-      });
+    async function saveCustomer(c) {
+      try {
+        if (!c.id) {
+          const { data, error } = await window.sb.from('customers').insert({ name: c.name, current_stock: c.currentStock }).select().single();
+          if (error) throw error;
+          c.id = data.id;
+        } else {
+          await window.sb.from('customers').update({ name: c.name, current_stock: c.currentStock }).eq('id', c.id);
+        }
+        const idx = state.customers.findIndex(x => x.id === c.id);
+        if (idx > -1) state.customers[idx] = c; else state.customers.push(c);
+      } catch (err) { console.error('saveCustomer', err); }
     }
 
-    async function saveData(storeName, data) {
-      const db = await initDB();
-      const tx = db.transaction(storeName, 'readwrite');
-      tx.objectStore(storeName).put(data);
-      return new Promise(resolve => tx.oncomplete = resolve);
+    async function saveVoucherToDB(v) {
+      try {
+        const session = JSON.parse(localStorage.getItem('gf_session') || 'null');
+        await window.sb.from('vouchers').insert({ customer_id: v.customerId, user_id: session ? session.id : null, data: v });
+      } catch (err) { console.error('saveVoucherToDB', err); }
     }
 
     // --- LOGIC ---
@@ -465,9 +470,8 @@ small{color:red;}
       const nameInput = document.getElementById('new-c-name');
       const name = nameInput.value.trim();
       if (!name) return;
-      const c = { id: Date.now().toString(), name, currentStock: 0 };
-      state.customers.push(c);
-      await saveData(STORES.CUSTOMERS, c);
+      const c = { name, currentStock: 0 };
+      await saveCustomer({ name: c.name, currentStock: c.currentStock });
       nameInput.value = '';
       render();
     }
@@ -475,7 +479,7 @@ small{color:red;}
     async function updateStock(id, val) {
       const c = state.customers.find(x => x.id === id);
       c.currentStock = Number(val);
-      await saveData(STORES.CUSTOMERS, c);
+      await saveCustomer(c);
     }
 
     function addItem() {
@@ -536,9 +540,8 @@ small{color:red;}
       };
       
       c.currentStock = totals.closing;
-      
-      await saveData(STORES.VOUCHERS, v);
-      await saveData(STORES.CUSTOMERS, c);
+      await saveVoucherToDB(v);
+      await saveCustomer(c);
       
       printPDF(openingAtTime);
       
@@ -649,14 +652,32 @@ small{color:red;}
       doc.save(`Receipt_${c.name.replace(/\s+/g, '_')}_${state.currentVoucher.date}.pdf`);
     }
 
-    // --- INIT ---
-    async function start() {
-      state.customers = await getData(STORES.CUSTOMERS);
-      if (state.customers.length === 0) {
-        state.customers = [{id:'1', name:'Demo Account', currentStock:0}];
-        await saveData(STORES.CUSTOMERS, state.customers[0]);
+    async function loadCustomers(seedIfEmpty) {
+      const customers = await fetchCustomers();
+      if (!customers || customers.length === 0) {
+        if (seedIfEmpty) {
+          const { data } = await window.sb
+            .from('customers')
+            .insert({ name: 'Demo Account', current_stock: 0 })
+            .select()
+            .single();
+          if (data) {
+            state.customers = [ { id: data.id, name: data.name, currentStock: Number(data.current_stock || 0) } ];
+          } else {
+            state.customers = [ { id: 'demo', name: 'Demo Account', currentStock: 0, isLocal: true } ];
+          }
+        } else {
+          state.customers = [ { id: 'demo', name: 'Demo Account', currentStock: 0, isLocal: true } ];
+        }
+      } else {
+        state.customers = customers.map(c => ({ id: c.id, name: c.name, currentStock: Number(c.current_stock || 0) }));
       }
       render();
+    }
+
+    // --- INIT ---
+    async function start() {
+      await loadCustomers(false);
     }
     start();
   </script>
@@ -679,61 +700,76 @@ small{color:red;}
 </div>
 
 <script>
-/* ===== USER DB ===== */
-let users = JSON.parse(localStorage.getItem('gf_users'));
+/* ===== USER DB (Supabase) ===== */
+let users = [];
 
-if(!users){
-  users = [
-    { username:'admin', password:'admin123', role:'admin' },
-    { username:'user1', password:'user123', role:'user', expiry:'2099-12-31' }
-  ];
-  localStorage.setItem('gf_users', JSON.stringify(users));
+function setLoginError(message){
+  const el = document.getElementById('errorMsg');
+  if(el) el.textContent = message || '';
 }
 
-function saveUsers(){
-  localStorage.setItem('gf_users', JSON.stringify(users));
+async function loadUsers(){
+  try{
+    const { data, error } = await window.sb.from('users').select('*').order('created_at', { ascending: true });
+    if(error) throw error;
+    users = data || [];
+    if(users.length === 0){
+      // create default users for first-time setup
+      const { error: seedErr } = await window.sb.from('users').insert([
+        { username: 'admin', password: 'admin123', role: 'admin' },
+        { username: 'user1', password: 'user123', role: 'user', expiry: '2099-12-31' }
+      ]);
+      if(seedErr) throw seedErr;
+      const res = await window.sb.from('users').select('*').order('created_at', { ascending: true });
+      users = res.data || [];
+    }
+    renderUsers();
+  }catch(e){
+    console.error('loadUsers', e);
+    setLoginError('DB not reachable or RLS blocked. Check Supabase policies.');
+  }
 }
 
 /* ===== LOGIN ===== */
-function login(){
+async function login(){
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value.trim();
   const err = document.getElementById('errorMsg');
 
-  const user = users.find(x=>x.username===u && x.password===p);
+  try{
+    const { data, error } = await window.sb.from('users').select('*').eq('username', u).eq('password', p).single();
+    if(error || !data){ err.textContent = 'Invalid credentials'; return; }
 
-  if(!user){
-    err.textContent = 'Invalid credentials';
-    return;
-  }
-
-  if(user.role==='user'){
-    const today = new Date().toISOString().split('T')[0];
-    if(today > user.expiry){
-      err.textContent = 'Account expired. Contact admin.';
-      return;
+    if(data.role === 'user'){
+      const today = new Date().toISOString().split('T')[0];
+      if(today > (data.expiry || '2099-12-31')){ err.textContent = 'Account expired. Contact admin.'; return; }
     }
-  }
 
-  localStorage.setItem('gf_session', JSON.stringify(user));
-  showApp(user);
+    localStorage.setItem('gf_session', JSON.stringify(data));
+    showApp(data);
+  }catch(e){
+    console.error('login', e);
+    if(err) err.textContent = 'Login failed. Check Supabase connection/policies.';
+  }
 }
 
 function showApp(user){
   document.getElementById('loginScreen').style.display='none';
-  
   document.getElementById('app').style.display='block';
   document.getElementById('currentUser').textContent = user.username;
 
   if(user.role==='admin'){
     document.getElementById('adminPanel').classList.remove('hidden');
-	document.getElementById('app-container').style.display='none';
-    renderUsers();
+    document.getElementById('app-container').style.display='none';
+    loadUsers();
+  }else{
+    document.getElementById('app-container').style.display='block';
+    loadCustomers(true);
   }
 }
 
 /* ===== ADMIN ===== */
-function addUser(){
+async function addUser(){
   const u = newUser.value.trim();
   const p = newPass.value.trim();
   const e = newExpiry.value;
@@ -741,17 +777,18 @@ function addUser(){
   if(!u || !p || !e) return alert('Fill all fields');
   if(users.find(x=>x.username===u)) return alert('User exists');
 
-  users.push({ username:u, password:p, role:'user', expiry:e });
-  saveUsers();
-
-  newUser.value='';
-  newPass.value='';
-  newExpiry.value='';
-  renderUsers();
+  try{
+    const { error } = await window.sb.from('users').insert({ username: u, password: p, role: 'user', expiry: e });
+    if(error) return alert(error.message);
+    alert('User added');
+    newUser.value=''; newPass.value=''; newExpiry.value='';
+    await loadUsers();
+  }catch(err){ console.error('addUser', err); alert('Failed to add user'); }
 }
 
 function renderUsers(){
   const list = document.getElementById('userList');
+  if(!list) return;
   list.innerHTML='';
 
   users.filter(u=>u.role==='user').forEach(u=>{
@@ -759,20 +796,25 @@ function renderUsers(){
     row.className='userRow';
     row.innerHTML=`
       <strong>${u.username}</strong>
-      <input type="date" value="${u.expiry}">
+      <input type="date" value="${u.expiry || ''}">
       <button class="deleteBtn">X</button>
     `;
 
-    row.querySelector('input').onchange = e=>{
-      u.expiry = e.target.value;
-      saveUsers();
+    row.querySelector('input').onchange = async e=>{
+      const newExpiry = e.target.value;
+      try{
+        await window.sb.from('users').update({ expiry: newExpiry }).eq('id', u.id);
+        u.expiry = newExpiry;
+      }catch(err){ console.error('update expiry', err); }
     };
 
-    row.querySelector('button').onclick = ()=>{
+    row.querySelector('button').onclick = async ()=>{
       if(confirm('Delete user?')){
-        users = users.filter(x=>x.username!==u.username);
-        saveUsers();
-        renderUsers();
+        try{
+          await window.sb.from('users').delete().eq('id', u.id);
+          users = users.filter(x=>x.id!==u.id);
+          renderUsers();
+        }catch(err){ console.error('delete user', err); }
       }
     };
 
@@ -786,11 +828,9 @@ function logout(){
   location.reload();
 }
 
-/* ===== AUTO LOGIN ===== */
+/* ===== AUTO LOGIN & INIT ===== */
 const session = JSON.parse(localStorage.getItem('gf_session'));
-if(session){
-  showApp(session);
-}
+if(session){ showApp(session); }
 </script>
 
 </body>
