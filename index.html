@@ -1,13 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script>
-      const SUPABASE_URL = "https://agfxauhgiqasrzpiltjp.supabase.co";
-      const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnZnhhdWhnaXFhc3J6cGlsdGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3NDA3NTYsImV4cCI6MjA4NTMxNjc1Nn0.jLn3GNtD_Ws7m9iq1qPV6gevG810U15foTIKOwse36s";
-      window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    </script>
-
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -18,6 +11,8 @@
   <!-- Libraries for PDF generation -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <title>GoldFlow Secure Login</title>
 
 <style>
@@ -258,10 +253,14 @@ small{color:red;}
     </nav>
   </div>
 <script>
+    // --- SUPABASE CONFIG ---
+    // ⚠️ REPLACE these with your actual Supabase project credentials
+    const SUPABASE_URL = 'https://agfxauhgiqasrzpiltjp.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnZnhhdWhnaXFhc3J6cGlsdGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3NDA3NTYsImV4cCI6MjA4NTMxNjc1Nn0.jLn3GNtD_Ws7m9iq1qPV6gevG810U15foTIKOwse36s';
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
     // --- APP STATE ---
     const PASSPHRASE = 'GOLD786';
-    const DB_NAME = 'GoldFlowDB_Local';
-    const STORES = { CUSTOMERS: 'customers', VOUCHERS: 'vouchers' };
     
     let state = {
       view: 'ledger',
@@ -277,32 +276,60 @@ small{color:red;}
       }
     };
 
-    // --- DB HELPERS (Supabase) ---
-    async function fetchCustomers() {
-      const { data, error } = await window.sb.from('customers').select('*').order('created_at', { ascending: true });
-      if (error) { console.error('fetchCustomers', error); return null; }
-      return data || [];
+    // --- SUPABASE DB HELPERS ---
+    function getLoggedInUserId() {
+      const session = JSON.parse(localStorage.getItem('gf_session'));
+      return session ? session.id : null;
     }
 
-    async function saveCustomer(c) {
-      try {
-        if (!c.id) {
-          const { data, error } = await window.sb.from('customers').insert({ name: c.name, current_stock: c.currentStock }).select().single();
-          if (error) throw error;
-          c.id = data.id;
-        } else {
-          await window.sb.from('customers').update({ name: c.name, current_stock: c.currentStock }).eq('id', c.id);
+    async function loadCustomers() {
+      const userId = getLoggedInUserId();
+      if (!userId) return [];
+      const { data, error } = await sb.from('customers').select('*').eq('created_by', userId).order('created_at', { ascending: true });
+      if (error) { console.error('Load customers error:', error); return []; }
+      // Map Supabase columns to app's expected property names
+      return (data || []).map(c => ({ id: c.id, name: c.name, currentStock: Number(c.current_stock) || 0 }));
+    }
+
+    async function saveCustomer(customer) {
+      const userId = getLoggedInUserId();
+      const { error } = await sb.from('customers').upsert({
+        id: customer.id,
+        name: customer.name,
+        current_stock: customer.currentStock,
+        created_by: userId
+      });
+      if (error) console.error('Save customer error:', error);
+    }
+
+    async function saveVoucher(voucher) {
+      const userId = getLoggedInUserId();
+      // 1. Insert into vouchers table
+      const { data: vData, error: vErr } = await sb.from('vouchers').insert({
+        customer_id: voucher.customerId,
+        user_id: userId,
+        data: {
+          date: voucher.date,
+          customerName: voucher.customerName,
+          openingBalance: voucher.openingBalance,
+          closingBalance: voucher.closingBalance,
+          mpGross: voucher.mpGross,
+          mpTunch: voucher.mpTunch,
+          mpFine: voucher.mpFine
         }
-        const idx = state.customers.findIndex(x => x.id === c.id);
-        if (idx > -1) state.customers[idx] = c; else state.customers.push(c);
-      } catch (err) { console.error('saveCustomer', err); }
-    }
+      }).select().single();
+      if (vErr) { console.error('Save voucher error:', vErr); return; }
 
-    async function saveVoucherToDB(v) {
-      try {
-        const session = JSON.parse(localStorage.getItem('gf_session') || 'null');
-        await window.sb.from('vouchers').insert({ customer_id: v.customerId, user_id: session ? session.id : null, data: v });
-      } catch (err) { console.error('saveVoucherToDB', err); }
+      // 2. Insert each item into voucher_items table
+      if (voucher.items && voucher.items.length > 0) {
+        const itemRows = voucher.items.map(item => ({
+          voucher_id: vData.id,
+          user_id: userId,
+          item: item
+        }));
+        const { error: iErr } = await sb.from('voucher_items').insert(itemRows);
+        if (iErr) console.error('Save voucher items error:', iErr);
+      }
     }
 
     // --- LOGIC ---
@@ -321,8 +348,10 @@ small{color:red;}
       return { fine, gross, net, opening, mpFine, closing: opening + fine - mpFine };
     }
 
-    function switchView(v) {
+    async function switchView(v) {
       state.view = v;
+      // Always reload customers from Supabase when switching views
+      state.customers = await loadCustomers();
       render();
     }
 
@@ -459,9 +488,11 @@ small{color:red;}
     }
 
     // --- ACTIONS ---
-    function authAdmin() {
+    async function authAdmin() {
       if (document.getElementById('admin-p').value === PASSPHRASE) {
         state.isAdminAuth = true;
+        // Reload customers from DB so master page shows latest
+        state.customers = await loadCustomers();
         render();
       } else alert('Wrong Passphrase');
     }
@@ -470,8 +501,12 @@ small{color:red;}
       const nameInput = document.getElementById('new-c-name');
       const name = nameInput.value.trim();
       if (!name) return;
-      const c = { name, currentStock: 0 };
-      await saveCustomer({ name: c.name, currentStock: c.currentStock });
+      const userId = getLoggedInUserId();
+      if (!userId) { alert('Session error. Please logout and login again.'); return; }
+      const { data, error } = await sb.from('customers').insert({ name, current_stock: 0, created_by: userId }).select().single();
+      if (error) { console.error('Add client error:', error); alert('Failed to add client: ' + error.message); return; }
+      const c = { id: data.id, name: data.name, currentStock: Number(data.current_stock) || 0 };
+      state.customers.push(c);
       nameInput.value = '';
       render();
     }
@@ -479,7 +514,7 @@ small{color:red;}
     async function updateStock(id, val) {
       const c = state.customers.find(x => x.id === id);
       c.currentStock = Number(val);
-      await saveCustomer(c);
+      await sb.from('customers').update({ current_stock: c.currentStock }).eq('id', id);
     }
 
     function addItem() {
@@ -532,7 +567,6 @@ small{color:red;}
       
       const v = { 
         ...state.currentVoucher, 
-        id: Date.now().toString(), 
         customerName: c.name, 
         openingBalance: openingAtTime,
         closingBalance: totals.closing,
@@ -540,8 +574,11 @@ small{color:red;}
       };
       
       c.currentStock = totals.closing;
-      await saveVoucherToDB(v);
-      await saveCustomer(c);
+      
+      // Save voucher + items to Supabase
+      await saveVoucher(v);
+      // Update customer closing balance in Supabase
+      await sb.from('customers').update({ current_stock: c.currentStock }).eq('id', c.id);
       
       printPDF(openingAtTime);
       
@@ -652,32 +689,10 @@ small{color:red;}
       doc.save(`Receipt_${c.name.replace(/\s+/g, '_')}_${state.currentVoucher.date}.pdf`);
     }
 
-    async function loadCustomers(seedIfEmpty) {
-      const customers = await fetchCustomers();
-      if (!customers || customers.length === 0) {
-        if (seedIfEmpty) {
-          const { data } = await window.sb
-            .from('customers')
-            .insert({ name: 'Demo Account', current_stock: 0 })
-            .select()
-            .single();
-          if (data) {
-            state.customers = [ { id: data.id, name: data.name, currentStock: Number(data.current_stock || 0) } ];
-          } else {
-            state.customers = [ { id: 'demo', name: 'Demo Account', currentStock: 0, isLocal: true } ];
-          }
-        } else {
-          state.customers = [ { id: 'demo', name: 'Demo Account', currentStock: 0, isLocal: true } ];
-        }
-      } else {
-        state.customers = customers.map(c => ({ id: c.id, name: c.name, currentStock: Number(c.current_stock || 0) }));
-      }
-      render();
-    }
-
     // --- INIT ---
     async function start() {
-      await loadCustomers(false);
+      state.customers = await loadCustomers();
+      render();
     }
     start();
   </script>
@@ -700,121 +715,119 @@ small{color:red;}
 </div>
 
 <script>
-/* ===== USER DB (Supabase) ===== */
-let users = [];
+/* ===== SUPABASE AUTH HELPERS (reuse same client from inner script) ===== */
+const sbAuth = sb; // reuse the Supabase client already created above
 
-function setLoginError(message){
-  const el = document.getElementById('errorMsg');
-  if(el) el.textContent = message || '';
-}
+let users = []; // loaded from Supabase
 
-async function loadUsers(){
-  try{
-    const { data, error } = await window.sb.from('users').select('*').order('created_at', { ascending: true });
-    if(error) throw error;
-    users = data || [];
-    if(users.length === 0){
-      // create default users for first-time setup
-      const { error: seedErr } = await window.sb.from('users').insert([
-        { username: 'admin', password: 'admin123', role: 'admin' },
-        { username: 'user1', password: 'user123', role: 'user', expiry: '2099-12-31' }
-      ]);
-      if(seedErr) throw seedErr;
-      const res = await window.sb.from('users').select('*').order('created_at', { ascending: true });
-      users = res.data || [];
-    }
-    renderUsers();
-  }catch(e){
-    console.error('loadUsers', e);
-    setLoginError('DB not reachable or RLS blocked. Check Supabase policies.');
+/* ===== SEED DEFAULT ADMIN (runs once on first ever load) ===== */
+async function seedDefaultAdmin() {
+  const { data } = await sbAuth.from('users').select('id').eq('username', 'admin').limit(1);
+  if (!data || data.length === 0) {
+    await sbAuth.from('users').insert([
+      { username: 'admin', password: 'admin123', role: 'admin' }
+    ]);
   }
 }
+seedDefaultAdmin();
 
 /* ===== LOGIN ===== */
-async function login(){
+async function login() {
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value.trim();
   const err = document.getElementById('errorMsg');
+  err.textContent = '';
 
-  try{
-    const { data, error } = await window.sb.from('users').select('*').eq('username', u).eq('password', p).single();
-    if(error || !data){ err.textContent = 'Invalid credentials'; return; }
+  const { data, error } = await sbAuth.from('users')
+    .select('*')
+    .eq('username', u)
+    .eq('password', p)
+    .limit(1);
 
-    if(data.role === 'user'){
-      const today = new Date().toISOString().split('T')[0];
-      if(today > (data.expiry || '2099-12-31')){ err.textContent = 'Account expired. Contact admin.'; return; }
-    }
-
-    localStorage.setItem('gf_session', JSON.stringify(data));
-    showApp(data);
-  }catch(e){
-    console.error('login', e);
-    if(err) err.textContent = 'Login failed. Check Supabase connection/policies.';
+  if (error || !data || data.length === 0) {
+    err.textContent = 'Invalid credentials';
+    return;
   }
+
+  const user = data[0];
+
+  if (user.role === 'user') {
+    const today = new Date().toISOString().split('T')[0];
+    if (user.expiry && today > user.expiry) {
+      err.textContent = 'Account expired. Contact admin.';
+      return;
+    }
+  }
+
+  // Store session locally (just for session persistence, NOT as source of truth)
+  localStorage.setItem('gf_session', JSON.stringify(user));
+  showApp(user);
 }
 
-function showApp(user){
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('app').style.display='block';
+function showApp(user) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
   document.getElementById('currentUser').textContent = user.username;
 
-  if(user.role==='admin'){
+  if (user.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
-    document.getElementById('app-container').style.display='none';
-    loadUsers();
-  }else{
-    document.getElementById('app-container').style.display='block';
-    loadCustomers(true);
+    document.getElementById('app-container').style.display = 'none';
+    renderUsers();
+  } else {
+    // For regular users, reload their customers from Supabase
+    start();
   }
 }
 
-/* ===== ADMIN ===== */
-async function addUser(){
-  const u = newUser.value.trim();
-  const p = newPass.value.trim();
-  const e = newExpiry.value;
+/* ===== ADMIN – USER MANAGEMENT (Supabase) ===== */
+async function addUser() {
+  const u = document.getElementById('newUser').value.trim();
+  const p = document.getElementById('newPass').value.trim();
+  const e = document.getElementById('newExpiry').value;
 
-  if(!u || !p || !e) return alert('Fill all fields');
-  if(users.find(x=>x.username===u)) return alert('User exists');
+  if (!u || !p || !e) return alert('Fill all fields');
 
-  try{
-    const { error } = await window.sb.from('users').insert({ username: u, password: p, role: 'user', expiry: e });
-    if(error) return alert(error.message);
-    alert('User added');
-    newUser.value=''; newPass.value=''; newExpiry.value='';
-    await loadUsers();
-  }catch(err){ console.error('addUser', err); alert('Failed to add user'); }
+  // Check if user already exists
+  const { data: existing } = await sbAuth.from('users').select('id').eq('username', u).limit(1);
+  if (existing && existing.length > 0) return alert('User exists');
+
+  const { error } = await sbAuth.from('users').insert({ username: u, password: p, role: 'user', expiry: e });
+  if (error) { console.error('Add user error:', error); alert('Failed to add user'); return; }
+
+  document.getElementById('newUser').value = '';
+  document.getElementById('newPass').value = '';
+  document.getElementById('newExpiry').value = '';
+  renderUsers();
 }
 
-function renderUsers(){
+async function renderUsers() {
   const list = document.getElementById('userList');
-  if(!list) return;
-  list.innerHTML='';
+  list.innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8">Loading...</div>';
 
-  users.filter(u=>u.role==='user').forEach(u=>{
+  const { data, error } = await sbAuth.from('users').select('*').eq('role', 'user').order('created_at', { ascending: true });
+  if (error) { console.error('Load users error:', error); list.innerHTML = '<div style="color:red">Failed to load users</div>'; return; }
+
+  users = data || [];
+  list.innerHTML = '';
+
+  users.forEach(u => {
     const row = document.createElement('div');
-    row.className='userRow';
-    row.innerHTML=`
+    row.className = 'userRow';
+    row.innerHTML = `
       <strong>${u.username}</strong>
       <input type="date" value="${u.expiry || ''}">
       <button class="deleteBtn">X</button>
     `;
 
-    row.querySelector('input').onchange = async e=>{
-      const newExpiry = e.target.value;
-      try{
-        await window.sb.from('users').update({ expiry: newExpiry }).eq('id', u.id);
-        u.expiry = newExpiry;
-      }catch(err){ console.error('update expiry', err); }
+    row.querySelector('input').onchange = async (ev) => {
+      const newExpiry = ev.target.value;
+      await sbAuth.from('users').update({ expiry: newExpiry }).eq('id', u.id);
     };
 
-    row.querySelector('button').onclick = async ()=>{
-      if(confirm('Delete user?')){
-        try{
-          await window.sb.from('users').delete().eq('id', u.id);
-          users = users.filter(x=>x.id!==u.id);
-          renderUsers();
-        }catch(err){ console.error('delete user', err); }
+    row.querySelector('button').onclick = async () => {
+      if (confirm('Delete user?')) {
+        await sbAuth.from('users').delete().eq('id', u.id);
+        renderUsers();
       }
     };
 
@@ -823,14 +836,34 @@ function renderUsers(){
 }
 
 /* ===== LOGOUT ===== */
-function logout(){
+function logout() {
   localStorage.removeItem('gf_session');
   location.reload();
 }
 
-/* ===== AUTO LOGIN & INIT ===== */
-const session = JSON.parse(localStorage.getItem('gf_session'));
-if(session){ showApp(session); }
+/* ===== AUTO LOGIN ===== */
+(async function autoLogin() {
+  const session = JSON.parse(localStorage.getItem('gf_session'));
+  if (session && session.id) {
+    // Re-verify from Supabase that user still exists and is not expired
+    const { data } = await sbAuth.from('users').select('*').eq('id', session.id).limit(1);
+    if (data && data.length > 0) {
+      const user = data[0];
+      if (user.role === 'user') {
+        const today = new Date().toISOString().split('T')[0];
+        if (user.expiry && today > user.expiry) {
+          localStorage.removeItem('gf_session');
+          return; // expired, stay on login
+        }
+      }
+      // Update local session with latest data
+      localStorage.setItem('gf_session', JSON.stringify(user));
+      showApp(user);
+    } else {
+      localStorage.removeItem('gf_session');
+    }
+  }
+})();
 </script>
 
 </body>
